@@ -9,10 +9,23 @@ import { cleanupSuspendedCliProcesses } from "./cli-runner/helpers.js";
 
 const runCommandWithTimeoutMock = vi.fn();
 const runExecMock = vi.fn();
+const runCommandStreamingMock = vi.fn();
+const emitAgentEventMock = vi.fn();
 
 vi.mock("../process/exec.js", () => ({
   runCommandWithTimeout: (...args: unknown[]) => runCommandWithTimeoutMock(...args),
   runExec: (...args: unknown[]) => runExecMock(...args),
+}));
+
+vi.mock("../process/exec-streaming.js", () => ({
+  runCommandStreaming: (...args: unknown[]) => runCommandStreamingMock(...args),
+}));
+
+vi.mock("../infra/agent-events.js", () => ({
+  emitAgentEvent: (...args: unknown[]) => emitAgentEventMock(...args),
+  registerAgentRunContext: vi.fn(),
+  getAgentRunContext: vi.fn(),
+  clearAgentRunContext: vi.fn(),
 }));
 
 describe("runCliAgent resume cleanup", () => {
@@ -140,6 +153,87 @@ describe("runCliAgent resume cleanup", () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
     expect(runCommandWithTimeoutMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("runCliAgent stream-json mode", () => {
+  beforeEach(() => {
+    runCommandStreamingMock.mockReset();
+    runExecMock.mockReset();
+    emitAgentEventMock.mockReset();
+  });
+
+  it("uses streaming executor for claude-cli and emits tool events", async () => {
+    runExecMock.mockResolvedValue({ stdout: "", stderr: "" });
+
+    runCommandStreamingMock.mockImplementation(
+      async (_argv: string[], opts: { onStdoutLine: (line: string) => void }) => {
+        opts.onStdoutLine(JSON.stringify({ type: "system", session_id: "sess-1" }));
+        opts.onStdoutLine(
+          JSON.stringify({
+            type: "assistant",
+            message: { content: [{ type: "text", text: "Hello" }] },
+          }),
+        );
+        opts.onStdoutLine(
+          JSON.stringify({
+            type: "tool_use",
+            tool_use_id: "tu-1",
+            name: "Read",
+            input: { file_path: "/tmp/test.ts" },
+          }),
+        );
+        opts.onStdoutLine(
+          JSON.stringify({
+            type: "tool_result",
+            tool_use_id: "tu-1",
+            is_error: false,
+            content: "file contents",
+          }),
+        );
+        opts.onStdoutLine(
+          JSON.stringify({
+            type: "result",
+            result: "Hello — here is the file.",
+            session_id: "sess-1",
+            usage: { input_tokens: 50, output_tokens: 30 },
+          }),
+        );
+        return { stdout: "", stderr: "", code: 0, signal: null, killed: false };
+      },
+    );
+
+    const result = await runCliAgent({
+      sessionId: "s1",
+      sessionFile: "/tmp/session.jsonl",
+      workspaceDir: "/tmp",
+      prompt: "read the file",
+      provider: "claude-cli",
+      model: "opus",
+      timeoutMs: 10_000,
+      runId: "run-stream-1",
+    });
+
+    expect(runCommandStreamingMock).toHaveBeenCalledTimes(1);
+    expect(runCommandWithTimeoutMock).not.toHaveBeenCalled();
+
+    expect(result.payloads?.[0]?.text).toContain("Hello");
+    expect(result.meta?.agentMeta?.sessionId).toBe("sess-1");
+    expect(result.meta?.agentMeta?.usage).toEqual({ input_tokens: 50, output_tokens: 30 });
+
+    // Verify agent events were emitted
+    const toolEvents = emitAgentEventMock.mock.calls.filter(
+      (call: unknown[]) => (call[0] as Record<string, unknown>).stream === "tool",
+    );
+    expect(toolEvents.length).toBe(2);
+    expect((toolEvents[0][0] as Record<string, unknown>).data).toMatchObject({
+      phase: "start",
+      name: "Read",
+    });
+    expect((toolEvents[1][0] as Record<string, unknown>).data).toMatchObject({
+      phase: "result",
+      name: "Read",
+    });
   });
 });
 

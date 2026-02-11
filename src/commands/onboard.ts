@@ -13,23 +13,18 @@ export async function onboardCommand(opts: OnboardOptions, runtime: RuntimeEnv =
   assertSupportedRuntime(runtime);
   const authChoice = opts.authChoice === "oauth" ? ("setup-token" as const) : opts.authChoice;
   const normalizedAuthChoice =
-    authChoice === "claude-cli"
-      ? ("setup-token" as const)
-      : authChoice === "codex-cli"
-        ? ("openai-codex" as const)
-        : authChoice;
-  if (opts.nonInteractive && (authChoice === "claude-cli" || authChoice === "codex-cli")) {
+    authChoice === "codex-cli"
+      ? ("openai-codex" as const)
+      : authChoice;
+  if (opts.nonInteractive && authChoice === "codex-cli") {
     runtime.error(
       [
         `Auth choice "${authChoice}" is deprecated.`,
-        'Use "--auth-choice token" (Anthropic setup-token) or "--auth-choice openai-codex".',
+        'Use "--auth-choice openai-codex".',
       ].join("\n"),
     );
     runtime.exit(1);
     return;
-  }
-  if (authChoice === "claude-cli") {
-    runtime.log('Auth choice "claude-cli" is deprecated; using setup-token flow instead.');
   }
   if (authChoice === "codex-cli") {
     runtime.log('Auth choice "codex-cli" is deprecated; using OpenAI Codex OAuth instead.');

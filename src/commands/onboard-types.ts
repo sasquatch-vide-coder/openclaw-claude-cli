@@ -58,6 +58,7 @@ export type AuthChoiceGroupId =
   | "qwen"
   | "qianfan"
   | "xai"
+  | "claude-cli"
   | "custom";
 export type GatewayAuthChoice = "token" | "password";
 export type ResetScope = "config" | "config+creds+sessions" | "full";

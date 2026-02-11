@@ -4,9 +4,12 @@ import type { OpenClawConfig } from "../config/config.js";
 import type { EmbeddedPiRunResult } from "./pi-embedded-runner.js";
 import { resolveHeartbeatPrompt } from "../auto-reply/heartbeat.js";
 import { shouldLogVerbose } from "../globals.js";
+import { emitAgentEvent } from "../infra/agent-events.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runCommandWithTimeout } from "../process/exec.js";
+import { runCommandStreaming } from "../process/exec-streaming.js";
+import { StreamJsonAccumulator } from "./cli-runner/stream-json-parser.js";
 import { resolveSessionAgentIds } from "./agent-scope.js";
 import { makeBootstrapWarn, resolveBootstrapContextForRun } from "./bootstrap-files.js";
 import { resolveCliBackendConfig } from "./cli-backends.js";
@@ -78,12 +81,7 @@ export async function runCliAgent(params: {
   const normalizedModel = normalizeCliModel(modelId, backend);
   const modelDisplay = `${params.provider}/${modelId}`;
 
-  const extraSystemPrompt = [
-    params.extraSystemPrompt?.trim(),
-    "Tools are disabled in this session. Do not call tools.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const extraSystemPrompt = params.extraSystemPrompt?.trim() || undefined;
 
   const sessionLabel = params.sessionKey ?? params.sessionId;
   const { contextFiles } = await resolveBootstrapContextForRun({
@@ -233,6 +231,70 @@ export async function runCliAgent(params: {
         await cleanupResumeProcesses(backend, cliSessionIdToSend);
       }
 
+      const outputMode = useResume ? (backend.resumeOutput ?? backend.output) : backend.output;
+
+      if (outputMode === "stream-json") {
+        const accumulator = new StreamJsonAccumulator({
+          onAssistantText: (text) => {
+            emitAgentEvent({
+              runId: params.runId,
+              stream: "assistant",
+              data: { text, delta: true },
+              sessionKey: params.sessionKey,
+            });
+          },
+          onToolUse: ({ name, toolCallId, args: toolArgs }) => {
+            emitAgentEvent({
+              runId: params.runId,
+              stream: "tool",
+              data: { phase: "start", name, toolCallId, args: toolArgs },
+              sessionKey: params.sessionKey,
+            });
+          },
+          onToolResult: ({ name, toolCallId, isError, result: toolResult }) => {
+            emitAgentEvent({
+              runId: params.runId,
+              stream: "tool",
+              data: { phase: "result", name, toolCallId, isError, result: toolResult },
+              sessionKey: params.sessionKey,
+            });
+          },
+        });
+
+        const result = await runCommandStreaming([backend.command, ...args], {
+          timeoutMs: params.timeoutMs,
+          cwd: workspaceDir,
+          env,
+          input: stdinPayload,
+          onStdoutLine: (line) => {
+            accumulator.handleLine(line);
+          },
+        });
+
+        const stderr = result.stderr.trim();
+        if (logOutputText && stderr) {
+          log.info(`cli stderr:\n${stderr}`);
+        }
+        if (shouldLogVerbose() && stderr) {
+          log.debug(`cli stderr:\n${stderr}`);
+        }
+
+        if (result.code !== 0) {
+          const err = stderr || "CLI failed.";
+          const reason = classifyFailoverReason(err) ?? "unknown";
+          const status = resolveFailoverStatus(reason);
+          throw new FailoverError(err, {
+            reason,
+            provider: params.provider,
+            model: modelId,
+            status,
+          });
+        }
+
+        return accumulator.finalize();
+      }
+
+      // Non-streaming path (json, jsonl, text)
       const result = await runCommandWithTimeout([backend.command, ...args], {
         timeoutMs: params.timeoutMs,
         cwd: workspaceDir,
@@ -270,8 +332,6 @@ export async function runCliAgent(params: {
           status,
         });
       }
-
-      const outputMode = useResume ? (backend.resumeOutput ?? backend.output) : backend.output;
 
       if (outputMode === "text") {
         return { text: stdout, sessionId: undefined };

@@ -26,6 +26,7 @@ export type AuthChoiceGroupId =
   | "together"
   | "qianfan"
   | "xai"
+  | "claude-cli"
   | "custom";
 
 export type AuthChoiceGroup = {
@@ -150,6 +151,12 @@ const AUTH_CHOICE_GROUP_DEFS: {
     choices: ["cloudflare-ai-gateway-api-key"],
   },
   {
+    value: "claude-cli",
+    label: "Claude Code CLI",
+    hint: "uses local claude binary (no API key needed)",
+    choices: ["claude-cli"],
+  },
+  {
     value: "custom",
     label: "Custom Provider",
     hint: "Any OpenAI or Anthropic compatible endpoint",
@@ -258,6 +265,11 @@ export function buildAuthChoiceOptions(params: {
     value: "minimax-api-lightning",
     label: "MiniMax M2.1 Lightning",
     hint: "Faster, higher output cost",
+  });
+  options.push({
+    value: "claude-cli",
+    label: "Claude Code CLI",
+    hint: "Install from code.claude.com — no API key required",
   });
   options.push({ value: "custom-api-key", label: "Custom Provider" });
 

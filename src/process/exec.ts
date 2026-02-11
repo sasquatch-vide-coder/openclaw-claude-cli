@@ -11,7 +11,7 @@ const execFileAsync = promisify(execFile);
  * Resolves a command for Windows compatibility.
  * On Windows, non-.exe commands (like npm, pnpm) require their .cmd extension.
  */
-function resolveCommand(command: string): string {
+export function resolveCommand(command: string): string {
   if (process.platform !== "win32") {
     return command;
   }

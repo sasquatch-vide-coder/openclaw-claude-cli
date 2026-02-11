@@ -219,7 +219,7 @@ describe("runCliAgent stream-json mode", () => {
 
     expect(result.payloads?.[0]?.text).toContain("Hello");
     expect(result.meta?.agentMeta?.sessionId).toBe("sess-1");
-    expect(result.meta?.agentMeta?.usage).toEqual({ input_tokens: 50, output_tokens: 30 });
+    expect(result.meta?.agentMeta?.usage).toEqual({ input: 50, output: 30 });
 
     // Verify agent events were emitted
     const toolEvents = emitAgentEventMock.mock.calls.filter(

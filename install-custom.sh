@@ -1476,11 +1476,13 @@ install_openclaw_from_git() {
     ensure_pnpm
     ensure_pnpm_binary_for_scripts
 
-    if [[ ! -d "$repo_dir" ]]; then
+    if [[ ! -d "$repo_dir/.git" ]]; then
+        if [[ -d "$repo_dir" ]]; then
+            ui_info "Directory ${repo_dir} exists but is not a git repo; removing and cloning fresh"
+            rm -rf "$repo_dir"
+        fi
         run_quiet_step "Cloning OpenClaw" git clone "$repo_url" "$repo_dir"
-    fi
-
-    if [[ "$GIT_UPDATE" == "1" ]]; then
+    elif [[ "$GIT_UPDATE" == "1" ]]; then
         if [[ -z "$(git -C "$repo_dir" status --porcelain 2>/dev/null || true)" ]]; then
             run_quiet_step "Updating repository" git -C "$repo_dir" pull --rebase || true
         else

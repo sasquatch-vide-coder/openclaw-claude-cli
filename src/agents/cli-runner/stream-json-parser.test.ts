@@ -109,14 +109,14 @@ describe("StreamJsonAccumulator", () => {
         type: "result",
         result: "Final answer.",
         session_id: "sess-456",
-        usage: { input_tokens: 100, output_tokens: 50 },
+        usage: { input: 100, output: 50 },
       }),
     );
 
     const output = acc.finalize();
     expect(output.text).toBe("Final answer.");
     expect(output.sessionId).toBe("sess-456");
-    expect(output.usage).toEqual({ input_tokens: 100, output_tokens: 50 });
+    expect(output.usage).toEqual({ input: 100, output: 50 });
   });
 
   it("result text overrides accumulated assistant text", () => {
@@ -207,7 +207,7 @@ describe("StreamJsonAccumulator", () => {
         type: "result",
         result: "Let me read the file. Here is the result.",
         session_id: "sess-e2e",
-        usage: { input_tokens: 200, output_tokens: 100 },
+        usage: { input: 200, output: 100 },
       }),
     );
 
@@ -218,6 +218,6 @@ describe("StreamJsonAccumulator", () => {
     const output = acc.finalize();
     expect(output.text).toBe("Let me read the file. Here is the result.");
     expect(output.sessionId).toBe("sess-e2e");
-    expect(output.usage).toEqual({ input_tokens: 200, output_tokens: 100 });
+    expect(output.usage).toEqual({ input: 200, output: 100 });
   });
 });

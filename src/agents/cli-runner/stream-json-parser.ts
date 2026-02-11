@@ -1,7 +1,7 @@
 export type CliOutput = {
   text: string;
   sessionId?: string;
-  usage?: { input_tokens?: number; output_tokens?: number };
+  usage?: { input?: number; output?: number };
 };
 
 export type StreamJsonCallbacks = {
@@ -28,7 +28,7 @@ export type StreamJsonCallbacks = {
 export class StreamJsonAccumulator {
   private sessionId: string | undefined;
   private resultText = "";
-  private usage: { input_tokens?: number; output_tokens?: number } | undefined;
+  private usage: { input?: number; output?: number } | undefined;
   private toolNameById = new Map<string, string>();
   private callbacks: StreamJsonCallbacks;
 
@@ -99,7 +99,11 @@ export class StreamJsonAccumulator {
         this.sessionId = parsed.session_id;
       }
       if (parsed.usage && typeof parsed.usage === "object") {
-        this.usage = parsed.usage as { input_tokens?: number; output_tokens?: number };
+        const raw = parsed.usage as Record<string, unknown>;
+        this.usage = {
+          input: (raw.input_tokens ?? raw.input) as number | undefined,
+          output: (raw.output_tokens ?? raw.output) as number | undefined,
+        };
       }
       return;
     }
